@@ -37,6 +37,7 @@ static NSString *svCollectionViewCellIdentifier = @"internal_svCollectionViewCel
 @property (nonatomic, strong) NSDictionary *registeredClassesForReuseIdentifier;
 @property (nonatomic) NSInteger sliderIndex;
 
+@property (nonatomic) CGPoint contentOffset;
 - (void)setSliderDelegate:(id<HCSliderViewSliderDelegate, UICollectionViewDelegateFlowLayout, UICollectionViewDataSource>)delegate index:(NSUInteger)index;
 - (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier;
 

@@ -12,6 +12,7 @@
 
 @interface HCSliderView () <UITableViewDataSource, UITableViewDelegate, HCSliderViewSliderDelegate, UICollectionViewDelegate, UICollectionViewDataSource> {
     NSDictionary *_cellClassesForReuseIdentifier;
+    NSMutableDictionary *_cachedTableViewRow;
 }
 @property (nonatomic, strong) UITableView *tableView;
 
@@ -31,8 +32,25 @@
         [self.tableView setSeparatorColor:[UIColor clearColor]];
         [self addSubview:self.tableView];
         _cellClassesForReuseIdentifier = [NSDictionary dictionaryWithObject:[HCSliderViewCell class] forKey:svCollectionViewCellIdentifier];
+        _cachedTableViewRow = [NSMutableDictionary new];
     }
     return self;
+}
+
+- (void)setContentSize:(CGSize)contentSize
+{
+    [self.tableView setContentSize:contentSize];
+}
+
+- (CGSize)contentSize
+{
+    return self.tableView.contentSize;
+}
+
+- (void)setFrame:(CGRect)frame
+{
+    [super setFrame:frame];
+    self.tableView.frame = self.bounds;
 }
 
 - (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier
@@ -50,9 +68,11 @@
     HCSliderViewSlider *slider = (HCSliderViewSlider *)[self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForItem:indexPath.slider inSection:0]];
     Class aCellClass = [slider.registeredClassesForReuseIdentifier objectForKey:identifier];
     if (!aCellClass) {
-        [slider registerClass:[HCSliderViewCell class] forCellReuseIdentifier:identifier];
+        aCellClass = [_cellClassesForReuseIdentifier objectForKeyedSubscript:identifier];
+        [slider registerClass:aCellClass forCellReuseIdentifier:identifier];
     }
-    return [slider.collectionView dequeueReusableCellWithReuseIdentifier:identifier forIndexPath:[NSIndexPath indexPathForItem:indexPath.item inSection:0]];
+    id cell = [slider.collectionView dequeueReusableCellWithReuseIdentifier:identifier forIndexPath:[NSIndexPath indexPathForItem:indexPath.item inSection:0]];
+    return cell;
 }
 
 #pragma mark - UITableViewDataSource
@@ -67,8 +87,14 @@
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    HCSliderViewSlider *slider = (HCSliderViewSlider *)[tableView dequeueReusableCellWithIdentifier:svTableViewCellIdentifier];
-    
+    HCSliderViewSlider *slider = [_cachedTableViewRow objectForKey:indexPath];
+    if (!slider) {
+        slider = (HCSliderViewSlider *)[tableView dequeueReusableCellWithIdentifier:nil];
+    }
+    if (!slider) {
+        slider = [[HCSliderViewSlider alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:nil];
+    }
+    [_cachedTableViewRow setObject:slider forKey:indexPath];
     [slider setSliderDelegate:self index:indexPath.row];
     
     for (NSString *cellIdentifier in _cellClassesForReuseIdentifier) {
@@ -81,6 +107,36 @@
     return slider;
 }
 
+- (void)reloadSlider:(NSInteger)slider
+{
+    HCSliderViewSlider *row = (HCSliderViewSlider *)[self.tableView cellForRowAtIndexPath:[NSIndexPath indexPathForRow:slider inSection:0]];
+    if (row) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [row.collectionView reloadData];
+        });
+    }
+    if (![[self.tableView indexPathsForVisibleRows] containsObject:[NSIndexPath indexPathForItem:slider inSection:0]]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+        [self.tableView reloadData];
+        });
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.tableView reloadRowsAtIndexPaths:@[[NSIndexPath indexPathForItem:slider inSection:0]] withRowAnimation:UITableViewRowAnimationNone];
+        });
+    }
+}
+
+- (void)reloadData
+{
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.tableView reloadData];
+    });
+}
+
+- (void)setSliderViewHeader:(UIView *)headerView
+{
+    [self.tableView setTableHeaderView:headerView];
+}
 
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView
 {
@@ -108,12 +164,18 @@
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
-    return [self heightForSlider:indexPath.row];
+    CGFloat height = [self heightForSlider:indexPath.row];
+    return height;
 }
 
 - (BOOL)tableView:(UITableView *)tableView shouldHighlightRowAtIndexPath:(NSIndexPath *)indexPath {
     return NO;
 }
+
+//- (void)tableView:(UITableView *)tableView willDisplayCell:(HCSliderViewSlider *)cell forRowAtIndexPath:(NSIndexPath *)indexPath
+//{
+//    [cell layoutIfNeeded];
+//}
 
 #pragma mark - HCSliderViewSlider Delegate
 
@@ -126,7 +188,7 @@
     }
         if ([self.delegate respondsToSelector:@selector(sliderView:sizeForItemAtIndexPath:)]) {
             CGSize size = [self.delegate sliderView:self sizeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSlider:slider]];
-            if (height < size.height) {
+            if (height <= size.height) {
                 height = size.height;
             }
         }
@@ -163,19 +225,22 @@
     if (collectionView.itemHeight < size.height) {
         collectionView.itemHeight = size.height;
     }
+    if (collectionView.frame.size.height < size.height) {
+        size.height = collectionView.frame.size.height;
+    }
     return size;
 }
 
 - (UIEdgeInsets)collectionView:(HCSliderViewSliderCollectionView *)collectionView layout:(UICollectionViewLayout*)collectionViewLayout insetForSectionAtIndex:(NSInteger)section
 {
     UIEdgeInsets insets = UIEdgeInsetsZero;
-    
+    collectionView.itemHeight = [self collectionView:collectionView layout:collectionViewLayout sizeForItemAtIndexPath:[NSIndexPath indexPathForItem:0 inSection:section]].height;
     if (collectionView.frame.size.height > collectionView.itemHeight) {
         CGFloat verticalInset = (collectionView.frame.size.height - collectionView.itemHeight) / 2.0;
         insets.top = verticalInset;
         insets.bottom = verticalInset;
     }
-    NSLog(@"%@, %f, %f", NSStringFromUIEdgeInsets(insets), collectionView.itemHeight, collectionView.frame.size.height);
+//    NSLog(@"%@, %f, %f", NSStringFromUIEdgeInsets(insets), collectionView.itemHeight, collectionView.frame.size.height);
     
     if (self.delegate && [self.delegate respondsToSelector:@selector(sliderView:minimumInterItemSpacingForSlider:)]) {
         insets.left = [self.delegate sliderView:self minimumInterItemSpacingForSlider:section];
@@ -202,11 +267,11 @@
 }
 
 #pragma mark - UICollectionView DataSource
-- (NSInteger)collectionView:(UICollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
+- (NSInteger)collectionView:(HCSliderViewSliderCollectionView *)collectionView numberOfItemsInSection:(NSInteger)section
 {
     NSInteger count = 0;
     if (self.delegate && [self.delegate respondsToSelector:@selector(sliderView:numberOfItemsInSlider:)]) {
-        count = [self.delegate sliderView:self numberOfItemsInSlider:section];
+        count = [self.delegate sliderView:self numberOfItemsInSlider:collectionView.index];
     }
     return count;
 }
@@ -232,21 +297,29 @@
 
 
 #pragma mark - UICollectionView Delegate
-- (BOOL)collectionView:(UICollectionView *)collectionView shouldHighlightItemAtIndexPath:(NSIndexPath *)indexPath
-{
-    return NO;
-}
+//- (BOOL)collectionView:(UICollectionView *)collectionView shouldHighlightItemAtIndexPath:(NSIndexPath *)indexPath
+//{
+//    return NO;
+//}
+
+
 
 //- (void)collectionView:(UICollectionView *)collectionView didHighlightItemAtIndexPath:(NSIndexPath *)indexPath;
 //- (void)collectionView:(UICollectionView *)collectionView didUnhighlightItemAtIndexPath:(NSIndexPath *)indexPath;
-//- (BOOL)collectionView:(UICollectionView *)collectionView shouldSelectItemAtIndexPath:(NSIndexPath *)indexPath;
+- (BOOL)collectionView:(UICollectionView *)collectionView shouldSelectItemAtIndexPath:(NSIndexPath *)indexPath
+{
+    return YES;
+}
 //- (BOOL)collectionView:(UICollectionView *)collectionView shouldDeselectItemAtIndexPath:(NSIndexPath *)indexPath; // called when the user taps on an already-selected item in multi-select mode
-- (void)collectionView:(HCSliderViewSliderCollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
+- (void)collectionView:(UICollectionView *)collectionView didSelectItemAtIndexPath:(NSIndexPath *)indexPath
 {
     if (self.delegate && [self.delegate respondsToSelector:@selector(sliderView:didSelectItemAtIndexPath:)]) {
-        [self.delegate sliderView:self didSelectItemAtIndexPath:[NSIndexPath indexPathForItem:indexPath.item inSection:collectionView.index]];
+        [self.delegate sliderView:self didSelectItemAtIndexPath:[NSIndexPath indexPathForItem:indexPath.item inSection:((HCSliderViewSliderCollectionView *)collectionView).index]];
     }
 }
+
+
+
 
 //- (void)collectionView:(UICollectionView *)collectionView didDeselectItemAtIndexPath:(NSIndexPath *)indexPath;
 

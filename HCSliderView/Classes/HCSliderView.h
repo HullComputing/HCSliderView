@@ -47,6 +47,11 @@ FOUNDATION_EXPORT const unsigned char HCSliderViewVersionString[];
 
 - (HCSliderViewCell *)dequeueReusableCellWithReuseIdentifier:(NSString *)identifier forIndexPath:(NSIndexPath *)indexPath;
 
+- (void)reloadSlider:(NSInteger)slider;
+- (void)reloadData;
+- (void)setSliderViewHeader:(UIView *)headerView;
+@property (nonatomic, assign) CGSize contentSize;
+
 @end
 
 @interface NSIndexPath (HCSliderView)

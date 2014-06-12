@@ -11,7 +11,13 @@
 
 @implementation HCSliderViewSliderCollectionView
 
-
+- (void)setFrame:(CGRect)frame
+{
+//    if (frame.size.height && !CGRectEqualToRect(frame, self.frame)) {
+        [self.collectionViewLayout invalidateLayout];
+        [super setFrame:frame];
+//    }
+}
 
 @end
 
@@ -27,6 +33,12 @@
     self = [super initWithStyle:style reuseIdentifier:reuseIdentifier];
     if (self) {
         self.registeredClassesForReuseIdentifier = [NSDictionary new];
+        self.contentOffset = CGPointZero;
+        UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
+        layout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
+        
+        self.collectionView = [[HCSliderViewSliderCollectionView alloc] initWithFrame:CGRectZero collectionViewLayout:layout];
+        
     }
     return self;
 }
@@ -49,10 +61,6 @@
     if (self.footerView) {
         [self.footerView removeFromSuperview];
         self.footerView = nil;
-    }
-    if (self.collectionView) {
-        [self.collectionView removeFromSuperview];
-        self.collectionView = nil;
     }
     
     
@@ -78,9 +86,7 @@
     
     // Create the collection view
     if (delegate) {
-        UICollectionViewFlowLayout *layout = [[UICollectionViewFlowLayout alloc] init];
-        layout.scrollDirection = UICollectionViewScrollDirectionHorizontal;
-    
+        
         CGRect collectionViewFrame = self.bounds;
         if (self.headerView) {
             collectionViewFrame.origin.y = CGRectGetMaxY(self.headerView.frame);
@@ -93,24 +99,57 @@
             footerFrame.size.width = self.frame.size.width;
             self.footerView.frame = footerFrame;
         }
-        self.collectionView = [[HCSliderViewSliderCollectionView alloc] initWithFrame:collectionViewFrame collectionViewLayout:layout];
+        
         self.collectionView.index = index;
+        if (!CGRectEqualToRect(collectionViewFrame, self.collectionView.frame)) {
+            self.collectionView.frame = collectionViewFrame;
+        }
         [self.collectionView setBackgroundColor:[UIColor clearColor]];
         self.collectionView.delegate = delegate;
         self.collectionView.dataSource = delegate;
 //        [self.collectionView registerClass:[HCSliderViewCell class] forCellWithReuseIdentifier:svCollectionViewCellIdentifier];
+        if (!self.collectionView.superview) {
         [self addSubview:self.collectionView];
+        }
     }
     
 }
 
+- (void)willMoveToSuperview:(UIView *)newSuperview
+{
+    [super willMoveToSuperview:newSuperview];
+    if (newSuperview) {
+        self.collectionView.contentOffset = self.contentOffset;
+    } else {
+        self.contentOffset = self.collectionView.contentOffset;
+    }
+}
+
+- (void)layoutSubviews
+{
+    CGRect frame = self.frame;
+    frame.size.width = self.superview.frame.size.width;
+    self.frame = frame;
+    frame = self.collectionView.frame;
+    frame.size.width = self.frame.size.width;
+    self.collectionView.frame = frame;
+    [super layoutSubviews];
+    
+   
+}
+
 - (void)registerClass:(Class)cellClass forCellReuseIdentifier:(NSString *)identifier
 {
+    
+    if (!cellClass) {
+        cellClass = [HCSliderViewCell class];
+    }
     Class registeredClass = [self.registeredClassesForReuseIdentifier objectForKey:identifier];
-    if (!registeredClass) {
+    if (!registeredClass || (registeredClass != cellClass)) {
         NSMutableDictionary *mutableRegisteredClasses = [NSMutableDictionary dictionaryWithDictionary:self.registeredClassesForReuseIdentifier];
         [mutableRegisteredClasses setObject:cellClass forKeyedSubscript:identifier];
         [self.collectionView registerClass:cellClass forCellWithReuseIdentifier:identifier];
+        self.registeredClassesForReuseIdentifier = [mutableRegisteredClasses copy];
     }
 }
 
